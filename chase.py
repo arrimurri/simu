@@ -1,0 +1,178 @@
+
+import random
+import math
+
+import simu
+
+
+
+# Consult python documentation in http://www.python.org
+
+
+########################################################################
+# Put all your code for the chaser agent into this class. You have
+# to implement the execute method, but you can also add other methods
+# as well. Just make sure that the method names are different from
+# those of the agent class in the simu module.
+class chaser_agent(simu.agent):
+
+    # This is the method everybody have to implement. The execution
+    # of code is not fully deterministic, meaning all the agents
+    # are executed in random order at each time point.
+    def execute(self):
+
+
+        # Some examples below.
+        # You should implement your agents using only the methods
+        # shown in the examples below. You can also implement your
+        # own helper methods using standard python API. You CAN NOT
+        # change anything in the simu.py file or use methods found
+        # in there if they are not listed in the examples below.
+
+        # My name is this string.
+        #self.name
+
+        # My id is this integer.
+        #self.id
+
+        # Get names of all other agents in the system as a python list.
+        #agents =  self.get_agent_names()
+
+        # Get id of an agent of name NAME, e.g.
+        #NAME = 'target'
+        #ID = self.get_agent_id(NAME)
+
+        # Get the sensor data as a python numpy array. -1 means
+        # obstacle (wall), 0 means the position is free
+        # and 1, 2, 3, ... means the position is occupied by an
+        # agent of that id. The order of cells is clockwise starting
+        # from the upper left corner of the 3x3 grid.
+        # See the wall following agent example follow_wall.py.
+        #sd = self.get_sensor_data()
+
+        # Get my own position as a tuple (x, y)
+        #position = self.get_position()
+
+        # Get agent chaser0 position as a tuple (x, y)
+        #position = self.get_position('chaser0')
+
+        # Get the target position as a tuple (x, y)
+        #position = self.get_position('target')
+
+        # Talk to agent chaser3. The message can be any python object.
+        #self.talk('chaser3', 1)
+
+        # Retrieve possible messages from other agents. Returns
+        # a dictionary as { 'sender0' : msg, sender1 : msg }, where
+        # senders probably are chaser0, chaser1, ...
+        #msgs = self.listen()
+
+        # Do something with the possible message from chaser2
+        #if msgs.has_key('chaser2'):
+        #    msg2 = msgs['chaser2']
+        #    self.helper_method(msg2, 0)
+
+        # Store some info for the next execution. some_key and
+        # some_info can be any python object, e.g.
+        #some_key = 'ASDF'
+        #some_info = (1, 2, 3)
+        #self.params[some_key] = some_info
+
+        # Retrieve some info stored earlier. some_key and
+        # some_info can be any python object.
+        #if self.params.has_key(some_key):
+        #    some_info = self.params[some_key]
+
+        # Clear all the earlier stored info.
+        #self.params.clear()
+
+        # If your agent(s) have reached their objective, you can
+        # stop the simulator as below.
+        #self.stop()
+
+        # Call your helper method
+        #self.helper_method(1, 2)
+
+        # For loop in python
+        #for i in range(10):
+        #    print i
+
+        # The agent will move randomly
+        target_pos = self.get_position('target')
+        own_pos = self.get_position()
+
+        up_distance_to_target = self.euclid_distance(target_pos, (own_pos[0], own_pos[1] + 1))
+        down_distance_to_target = self.euclid_distance(target_pos, (own_pos[0], own_pos[1] - 1))
+        left_distance_to_target = self.euclid_distance(target_pos, (own_pos[0] - 1, own_pos[1]))
+        right_distance_to_target = self.euclid_distance(target_pos, (own_pos[0] + 1, own_pos[1] + 1))
+
+        list_with_direction = [(up_distance_to_target, 'up'), (down_distance_to_target, 'down'), (left_distance_to_target, 'left'), (right_distance_to_target, 'right')]
+
+        chosen = list_with_direction[0]
+        for elem in list_with_direction:
+            if elem[0] < chosen[0]:
+                chosen = elem
+            
+        self.move(chosen[1])
+        
+
+    # All extra methods should be inside the class.
+    # All class methods have self as their first parameter.
+    # self is a reference of the instance of the class.
+    def helper_method(self, param0, param1):
+
+        # Do nothing
+        pass
+
+    def euclid_distance(self, target_pos, chaser_pos = None):
+        if chaser_pos == None:
+            chaser_pos = self.get_position()
+
+        distance = math.sqrt((target_pos[0] - chaser_pos[0])**2 + (target_pos[1] - chaser_pos[1])**2)
+
+        return distance
+
+
+
+
+########################################################################
+# Put all your code for the target agent into this class. You have
+# to implement the execute method, but you can also add other methods
+# as well. Just make sure that the method names are different from
+# those of the agent class in the simu module.
+class target_agent(simu.agent):
+
+    def execute(self):
+
+        # Do not remove the line below or the test below that.
+        sd = self.get_sensor_data()
+        # Test whether there are any possible moves and if not
+        # do nothing, i.e. chasers have won unless they are stupid.
+        if sd[1] != 0 and sd[3] != 0 and sd[5] != 0 and sd[7] != 0:
+            return
+        # Do not remove the lines above.
+        # Put all your code for the execute method below this line.
+
+
+        # The agent will move randomly
+        self.move(random.choice(['up', 'down', 'left', 'right']))
+
+
+
+# Initialize the simulator and define the obstacles in the environment.
+# The obstacles (walls) can only be horizontal or vertical.
+S = simu.simu(walls = [[13, 25, 30, 25], [10, 15, 25, 15], [11, 5, 11, 16], [24, 5, 24, 16]], GS = 31, W = 600, H = 600)
+
+# Add the target agent to position (39, 39)
+# Do not change the name of the agent.
+S.add_agent(target_agent('target', (255, 0, 0)), (30, 30))
+
+# Add chaser agents to the bottom of the window starting from origo.
+# Do not change the name of the agents. The names are chaser0, chaser1, ...
+# These are the names that agents can use if/when communicating.
+for i in xrange(4):
+    S.add_agent(chaser_agent('chaser' + str(i), (255, 255, 255)), (i, 0))
+
+# Run the simulation
+S.run()
+

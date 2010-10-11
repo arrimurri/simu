@@ -1,0 +1,402 @@
+'''
+    Copyright (c) 2010 Jukka Perkio jperkio@cs.helsinki.fi
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'''
+
+import sys, pygame, random, math, numpy, resource
+
+
+GAP = 4
+WALL_WIDTH = 7
+TIME_LIMIT = 100
+
+########################################################################
+class agent:
+
+    ####################################################################
+    def __init__(self, name, color):
+
+        self.params = {}
+
+        self.name = name
+        self.color = color
+
+
+        self.__animate = False
+
+        self.mouse_position   = None
+        self.incoming_msgs    = [{}, {}]
+
+
+    ####################################################################
+    def add(self, simu, index, rect, surface, grid_size, unit_size, position):
+
+        self.simu             = simu
+        self.id               = index
+        self.rect             = rect
+        self.old_rect         = rect
+        self.target_rect      = rect
+        self.surface          = surface
+        self.grid_size        = grid_size
+        self.unit_size        = unit_size
+        self._position        = position
+        self._target_position = self._position
+
+
+    ####################################################################
+    def get_agent_names(self):
+
+        agent_names = self.simu.agent_names.keys()
+        del agent_names[agent_names.index(self.name)]
+
+        return agent_names
+
+
+    ####################################################################
+    def stop(self):
+
+        self.simu.STOP = True
+
+
+    ####################################################################
+    def set_color(self, color):
+
+        self.color = color
+        pygame.draw.circle(self.surface, color, (self.rect.height / 2, self.rect.height / 2), (self.unit_size - GAP) / 2)
+        self.__animate = True
+
+
+    ####################################################################
+    def get_position(self):
+
+        return self._position
+
+
+    ####################################################################
+    def get_sensor_data(self):
+
+        ret = [0 for i in xrange(8)]
+        x0 = self._position[0]
+        y0 = self._position[1]
+        GS = self.simu.GS
+
+        if x0 > 0 and x0 < GS - 1 and y0 > 0 and y0 < GS - 1:
+            ret[:3] = self.simu.map[x0 - 1:x0 + 2, y0 + 1]
+            ret[3]  = self.simu.map[x0 + 1, y0]
+            ret[4]  = self.simu.map[x0 + 1, y0 - 1]
+            ret[5]  = self.simu.map[x0, y0 - 1]
+            ret[6]  = self.simu.map[x0 - 1, y0 - 1]
+            ret[7]  = self.simu.map[x0 - 1, y0]
+
+        if x0 == 0:
+            ret[6:] = [-1, -1]
+            ret[0]  = -1
+        elif x0 == GS - 1:
+            ret[2:5] = [-1, -1, -1]
+
+        if y0 == 0:
+            ret[4:7] = [-1, -1, -1]
+        elif y0 == GS - 1:
+            ret[:3]  = [-1, -1, -1]
+
+
+
+        return numpy.array(ret)
+
+
+    ####################################################################
+    def check_line(self, p0, p1):
+
+        x0 = p0[0]
+        y0 = p0[1]
+        x1 = p1[0]
+        y1 = p1[1]
+
+
+        if x0 == x1:
+            if y0 < y1:
+                objects = self.simu.map[x0, y0:y1 + 1]
+                m = min(numpy.where(objects != 0)) + y0 - 1
+            else:
+                objects = self.simu.map[x0, y1:y0 + 1]
+                m = max(numpy.where(objects != 0))  + y1 + 1
+
+            if len(m) > 0:
+                return (p1[0], m[0])
+
+
+        else:
+            if x0 < x1:
+                objects = self.simu.map[x0:x1 + 1, y0]
+                m = min(numpy.where(objects != 0)) + x0 - 1
+            else:
+                objects = self.simu.map[x1:x0 + 1, y0]
+                m = max(numpy.where(objects != 0))  + x1 + 1
+
+            if len(m) > 0:
+                return (m[0], p1[1])
+
+        return p1
+
+
+    ####################################################################
+    def get_position(self, agent = None):
+
+        if agent == None:
+            return self._position
+
+        return self.simu.agents[self.simu.agent_names[agent] - 1].get_position()
+
+
+    ####################################################################
+    def move(self, direction, distance = 1):
+
+        self.old_rect = self.rect
+
+        self.simu.map[self._position[0], self._position[1]] = 0
+
+        if direction == 'up':
+            if self._position[1] + distance >= self.grid_size:
+                distance = self.grid_size - self._position[1] - 1
+            self._target_position = (self._position[0], self._position[1] + distance)
+            self.phys_step = (0, -1)
+
+
+        elif direction == 'down':
+            if self._position[1] - distance <= 0:
+                distance = self._position[1]
+            self._target_position = (self._position[0], self._position[1] - distance)
+            self.phys_step = (0, 1)
+
+
+        elif direction == 'right':
+            if self._position[0] + distance >= self.grid_size:
+                distance = self.grid_size - self._position[0] - 1
+            self._target_position = (self._position[0] + distance, self._position[1])
+            self.phys_step = (1, 0)
+
+
+        elif direction == 'left':
+            if self._position[0] - distance < 0:
+                distance = self._position[0]
+            self._target_position = (self._position[0]  - distance, self._position[1])
+            self.phys_step = (-1, 0)
+
+
+
+        
+        self._target_position = self.check_line(self._position, self._target_position)
+
+        x = self._target_position[0] * self.unit_size + GAP / 2
+        y = (self.grid_size - self._target_position[1] - 1) * self.unit_size + GAP / 2
+
+
+
+        self.target_rect = pygame.Rect(x, y, self.unit_size - GAP, self.unit_size - GAP)
+
+
+        self.simu.map[self._target_position[0], self._target_position[1]] = self.id
+
+        return self._target_position
+
+
+
+
+    ###################################################################
+    def animate(self):
+
+        self.old_rect = self.rect
+        if self.rect != self.target_rect:
+            self.rect = self.rect.move(self.phys_step)
+            self.__animate = False
+            return True
+
+        if self.__animate:
+            self.__animate = False
+            return True
+            
+
+        self._position = self._target_position
+
+
+        return False
+
+
+    ####################################################################
+    def mouse(self):
+
+        return self.mouse_position
+
+
+    ####################################################################
+    def talk(self, name, msg):
+        
+        self.simu.talk(self.name, name, msg)
+
+
+    ####################################################################
+    def listen(self):
+
+        return self.incoming_msgs[0]
+
+
+
+
+
+
+
+########################################################################
+class simu:
+
+    ####################################################################
+    def __init__(self, W = 801, H = 801, GS = 40, walls = ()):
+
+        self.W     = W
+        self.H     = H
+        self.GS    = GS
+        self.STOP  = False
+
+        self.mouse_position = None
+
+        self.phys_cell_size = self.H / self.GS
+
+        self.walls = walls
+
+        self.agents      = []
+        self.agent_names = {}
+
+        self.map     = numpy.array(numpy.zeros((self.GS, self.GS), numpy.int))
+
+        for wall in walls:
+
+            for i in xrange(wall[0], wall[2] + 1):
+                for j in xrange(wall[1], wall[3] + 1):
+                    self.map[i, j] = -1
+
+
+
+    ####################################################################
+    def create_window(self):
+
+        pygame.init()
+        self.window = pygame.display.set_mode((self.W, self.H))
+        #self.window.set_colorkey((0, 0, 0, 0))
+        
+        for i in xrange(0, self.H, self.H / self.GS):
+            
+            pygame.draw.line(self.window, (255, 255, 255), (0, i), (self.H - 1, i))
+            pygame.draw.line(self.window, (255, 255, 255), (i, 0), (i, self.H - 1))
+                                                             
+        for wall in self.walls:
+
+            if wall[0] == wall[2]:
+                x0 = x1 = wall[0] * self.phys_cell_size + 0.5 * self.phys_cell_size
+                y0 = -(wall[1] - self.GS ) * self.phys_cell_size
+                y1 = -(wall[3] - self.GS  + 1) * self.phys_cell_size
+            else:
+                x0 = wall[0] * self.phys_cell_size
+                x1 = (wall[2]  + 1) * self.phys_cell_size
+                y0 = y1 = -(wall[1] - self.GS + 1) * self.phys_cell_size + 0.5 * self.phys_cell_size
+
+
+            pygame.draw.line(self.window, (128, 128, 128), (x0, y0), (x1, y1), WALL_WIDTH)
+
+
+        self.clean_window = self.window.copy()
+
+
+    ####################################################################
+    def mouse(self, position):
+
+        if position[0] > self.H or position[1] > self.H:
+            return
+
+        self.mouse_position = (position[0] / self.phys_cell_size, \
+                                   -(position[1] / self.phys_cell_size - self.GS + 1))
+
+
+
+    ####################################################################
+    def add_agent(self, agent, position):
+
+        if self.map[position] == -1:
+            return False
+
+        self.agents.append(agent)
+
+        S = self.H / self.GS
+        x = (position[0]) * S + 2
+        y = -((position[1] - self.GS) * S) - S + 2
+        S = S - GAP
+
+        rect = pygame.Rect((x, y, S, S))
+
+        surface = pygame.Surface((S, S))
+        surface.set_colorkey((0, 0, 0, 0))
+        pygame.draw.circle(surface, agent.color, (S / 2, S / 2), S / 2)
+
+
+        agent.add(self, len(self.agents), rect, surface, self.GS, self.H / self.GS, position)
+        self.agent_names[agent.name] = len(self.agents)
+
+        return True
+
+
+    ####################################################################
+    def talk(self, src, target, msg):
+
+        self.agents[self.agent_names[target] - 1].incoming_msgs[1][src] = msg
+
+
+    ####################################################################
+    def run(self):
+
+        self.create_window()
+
+        cpu_time = 0
+        while not self.STOP and cpu_time < TIME_LIMIT:
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    sys.exit()
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    self.mouse(pygame.mouse.get_pos())
+
+
+
+
+            ids = range(len(self.agents))
+            random.shuffle(ids)
+            for i in ids:
+                self.agents[i].mouse_position = self.mouse_position
+                if self.agents[i].animate():
+                    self.window.blit(self.clean_window, self.agents[i].old_rect, self.agents[i].old_rect)
+                    self.window.blit(self.agents[i].surface, self.agents[i].rect)
+                else:
+                    self.agents[i].execute()
+                    self.agents[i].mouse_position = None
+                    self.agents[i].incoming_msgs[0] = self.agents[i].incoming_msgs[1]
+                    self.agents[i].incoming_msgs[1] = {}
+
+            pygame.display.flip()
+
+
+            #cpu_time = resource.getrusage(resource.RUSAGE_SELF)[0] \
+            #    + resource.getrusage(resource.RUSAGE_SELF)[1]
+
+
+
+        print "GAME OVER"
+        sys.stdin.readline()
