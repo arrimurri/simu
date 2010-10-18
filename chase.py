@@ -5,7 +5,6 @@ import math
 import simu
 
 
-
 # Consult python documentation in http://www.python.org
 
 
@@ -16,7 +15,23 @@ import simu
 # those of the agent class in the simu module.
 class chaser_agent(simu.agent):
 
-    # This is the method everybody have to implement. The execution
+    # Do not add parameters to the call of this method, i.e.
+    # the agents must be initialized with only name and color
+    # parameters.
+    def __init__(self, name, color):
+
+        super(chaser_agent, self).__init__(name, color)
+        # Add possible initialization below this line. At this
+        # point many of the properties of the agent are not fully
+        # initilized yet. E.g. you cannot get the position of the
+        # agent yet, etc.
+
+        self.wall_positions = {}
+
+
+
+
+    # This is the method everybody has to implement. The execution
     # of code is not fully deterministic, meaning all the agents
     # are executed in random order at each time point.
     def execute(self):
@@ -97,23 +112,61 @@ class chaser_agent(simu.agent):
         #for i in range(10):
         #    print i
 
-        # The agent will move randomly
+        # Send wall positions to other agents
+        self.update_and_send_wall_positions()
+        # Get wall positions from other agents
+        self.get_wall_positions_from_others()
+
+        # Get target positions
         target_pos = self.get_position('target')
         own_pos = self.get_position()
 
-        up_distance_to_target = self.euclid_distance(target_pos, (own_pos[0], own_pos[1] + 1))
-        down_distance_to_target = self.euclid_distance(target_pos, (own_pos[0], own_pos[1] - 1))
-        left_distance_to_target = self.euclid_distance(target_pos, (own_pos[0] - 1, own_pos[1]))
-        right_distance_to_target = self.euclid_distance(target_pos, (own_pos[0] + 1, own_pos[1] + 1))
+        print 'Going in to astar'
+        list_of_moves = self.astar(target_pos)
+        print 'Coming out of astar'
+        if not list_of_moves:
+            print 'Astar returned false'
+            return
+        next_pos = list_of_moves.pop()
 
-        list_with_direction = [(up_distance_to_target, 'up'), (down_distance_to_target, 'down'), (left_distance_to_target, 'left'), (right_distance_to_target, 'right')]
+        direction = ''
+        if next_pos == self.pos_up():
+            direction = 'up'
+        if next_pos == self.pos_down():
+            direction = 'down'
+        if next_pos == self.pos_left():
+            direction = 'left'
+        if next_pos == self.pos_right():
+            direction = 'right'
 
-        chosen = list_with_direction[0]
-        for elem in list_with_direction:
-            if elem[0] < chosen[0]:
-                chosen = elem
+        self.move(direction)
+        return
+
+        up_distance_to_target = self.euclid_distance(target_pos, self.pos_up())
+        down_distance_to_target = self.euclid_distance(target_pos, self.pos_down())
+        left_distance_to_target = self.euclid_distance(target_pos, self.pos_left())
+        right_distance_to_target = self.euclid_distance(target_pos, self.pos_right())
+
+        list_with_direction = [(up_distance_to_target, 'up'), 
+            (down_distance_to_target, 'down'), 
+            (left_distance_to_target, 'left'), 
+            (right_distance_to_target, 'right')]
+
+        copy_of_list = []
+        while copy_of_list != list_with_direction:
+            copy_of_list = list_with_direction[:]
+            i = 1
+            while i < len(list_with_direction):
+                if list_with_direction[i - 1][0] > list_with_direction[i][0]:
+                    tmp = list_with_direction[i]
+                    list_with_direction[i] = list_with_direction[i - 1]
+                    list_with_direction[i - 1] = tmp
+                i += 1
             
-        self.move(chosen[1])
+        for direction in list_with_direction:
+            if not self.occupied(direction):
+                self.move(direction[1])
+                break
         
 
     # All extra methods should be inside the class.
@@ -124,15 +177,240 @@ class chaser_agent(simu.agent):
         # Do nothing
         pass
 
+    def astar(self, target):
+        start_pos = self.get_position()
+
+        openlist = [start_pos]
+        closedlist = []
+        parent_node = {}
+        path_weight = {}
+        heuristic_weight = {}
+        sum_weight = {}
+
+        path_weight[start_pos] = 0
+        heuristic_weight[start_pos] = self.euclid_distance(target)
+        sum_weight[start_pos] = 0
+
+        while len(openlist) > 0:
+            openlist.sort(key = lambda x: sum_weight[x], reverse = True)
+            print openlist
+            print len(openlist)
+            node = openlist.pop()
+            print len(openlist)
+            print node
+            print sum_weight[node]
+
+            if node == target:
+                return self.backtrack_route(node, parent_node)
+
+            closedlist.append(node)
+
+            for neighbour in self.get_neighbours(node):
+                if neighbour in closedlist:
+                    print 'neighbour in closedlist'
+                    continue
+                calc_score = path_weight[node] + 1
+
+                if neighbour not in openlist:
+                    insert_stats = True
+                    openlist.append(neighbour)
+                elif calc_score < path_weight[neighbour]:
+                    insert_stats = True
+                else:
+                    insert_stats = False
+
+                if insert_stats:
+                    parent_node[neighbour] = node
+                    path_weight[neighbour] = calc_score
+                    heuristic_weight[neighbour] = self.euclid_distance(target, neighbour)
+                    sum_weight[neighbour] = path_weight[neighbour] + heuristic_weight[neighbour]
+        return False
+
+    def backtrack_route(self, node, parent_node):
+        retlist = []
+        while parent_node.has_key(node):
+            retlist.append(node)
+            node = parent_node[node]
+        retlist.append(node)
+        return retlist
+
+    def get_neighbours(self, node):
+        neighbours = []
+        if node[0] < 0 or node[1] < 0:
+            return neighbours
+
+        if not self.wall_or_occupied(self.pos_right(node)):
+            neighbours.append(self.pos_right(node))
+
+        if not self.wall_or_occupied(self.pos_left(node)):
+            neighbours.append(self.pos_left(node))
+
+        if not self.wall_or_occupied(self.pos_up(node)):
+            neighbours.append(self.pos_up(node))
+
+        if not self.wall_or_occupied(self.pos_down(node)):
+            neighbours.append(self.pos_down(node))
+            
+        return neighbours
+        
+    def wall_or_occupied(self, node):
+        if self.occupied(node):
+            return True
+        if node in self.wall_positions:
+            return True
+        return False
+
+    def get_wall_positions_from_others(self):
+        msgs = self.listen()
+        chasers = self.get_agent_names()
+        wall_pos = []
+
+        for c in chasers:
+            if msgs.has_key(c):
+                if msgs[c].has_key('wall_positions'):
+                    for pos in msgs[c]['wall_positions']:
+                        self.wall_positions[pos] = True
+
+    def update_and_send_wall_positions(self):
+        sd = self.get_sensor_data()
+        wall_pos = []
+        for i, s in enumerate(sd):
+            if s == -1:
+                coords = self.get_coords_of_sensor(i)
+                wall_pos.append(coords)
+                self.wall_positions[coords] = True
+
+        chasers = self.get_agent_names()
+
+        for c in chasers:
+            self.talk(c, {'wall_positions': wall_pos})
+
+    def get_coords_of_sensor(self, index):
+        pos = self.get_position()
+
+        # Return -1 if index is not in range 0 to 7
+        if index < 0 and index > 7:
+            return -1
+
+        if index == 0:
+            return (pos[0] - 1, pos[1] + 1)
+        elif index == 1:
+            return (pos[0], pos[1] + 1)
+        elif index == 2:
+            return (pos[0] + 1, pos[1] + 1)
+        elif index == 3:
+            return (pos[0] + 1, pos[1])
+        elif index == 4:
+            return (pos[0] + 1, pos[1] - 1)
+        elif index == 5:
+            return (pos[0], pos[1] - 1)
+        elif index == 6:
+            return (pos[0] - 1, pos[1] - 1)
+        else:
+            return (pos[0] - 1, pos[1])
+
+    def occupied(self, move_pos):
+        sensor_value = self.get_sensor_value_by_direction(move_pos[1])
+
+        if(sensor_value != 0):
+            return True
+        return False
+            
+    def go_around(self, chosen):
+        target_pos = self.get_position('target')
+        own_pos = self.get_position()
+        sd = self.get_sensor_data()
+        self.params['move'] = chosen[1]
+
+        if sd[1] == -1 and own_pos[1] < target_pos[1]:
+            if sd[3] == -1:
+                self.params['move'] = 'left'
+            elif sd[7] == -1:
+                self.params['move'] = 'right'
+            elif self.params.has_key('move'):
+                pass
+            else:
+                self.params['move'] = random.choice(['left', 'right'])
+
+        if sd[5] == -1 and own_pos[1] > target_pos[1]:
+            if sd[3] == -1:
+                self.params['move'] = 'left'
+            elif sd[7] == -1:
+                self.params['move'] = 'right'
+            elif self.params.has_key('move'):
+                pass
+            else:
+                self.params['move'] = random.choice(['left', 'right'])
+                
+        if sd[3] == -1 and own_pos[0] < target_pos[0]:
+            if sd[1] == -1:
+                self.params['move'] = 'down'
+            elif sd[5] == -1:
+                self.params['move'] = 'up'
+            elif self.params.has_key('move'):
+                pass
+            else:
+                self.params['move'] = random.choice(['up', 'down'])
+
+        if sd[7] == -1 and own_pos[0] > target_pos[0]:
+            if sd[1] == -1:
+                self.params['move'] = 'down'
+            elif sd[5] == -1:
+                self.params['move'] = 'up'
+            elif self.params.has_key('move'):
+                pass
+            else:
+                self.params['move'] = random.choice(['up', 'down'])
+
+        self.move(self.params['move'])
+
+    def get_sensor_value_by_direction(self, direction):
+        sd = self.get_sensor_data()
+        if direction == 'up':
+            return sd[1]
+        if direction == 'down':
+            return sd[5]
+        if direction == 'left':
+            return sd[7]
+        return sd[3]
+        
+    def get_pos_by_direction(self, direction):
+        if direction == 'up':
+            return self.pos_up()
+        if direction == 'down':
+            return self.pos_down()
+        if direction == 'left':
+            return self.pos_left()
+        return self.pos_right()
+
+    def pos_left(self, own_pos = None):
+        if not own_pos:
+            own_pos = self.get_position()
+        return (own_pos[0] - 1, own_pos[1])
+
+    def pos_right(self, own_pos = None):
+        if not own_pos:
+            own_pos = self.get_position()
+        return (own_pos[0] + 1, own_pos[1])
+
+    def pos_up(self, own_pos = None):
+        if not own_pos:
+            own_pos = self.get_position()
+        return (own_pos[0], own_pos[1] + 1)
+
+    def pos_down(self, own_pos = None):
+        if not own_pos:
+            own_pos = self.get_position()
+        return (own_pos[0], own_pos[1] - 1)
+
     def euclid_distance(self, target_pos, chaser_pos = None):
         if chaser_pos == None:
             chaser_pos = self.get_position()
 
-        distance = math.sqrt((target_pos[0] - chaser_pos[0])**2 + (target_pos[1] - chaser_pos[1])**2)
+        distance = math.sqrt((target_pos[0] - chaser_pos[0])**2 + 
+            (target_pos[1] - chaser_pos[1])**2)
 
         return distance
-
-
 
 
 ########################################################################
@@ -141,6 +419,11 @@ class chaser_agent(simu.agent):
 # as well. Just make sure that the method names are different from
 # those of the agent class in the simu module.
 class target_agent(simu.agent):
+
+    def __init__(self, name, color):
+
+        super(target_agent, self).__init__(name, color)
+        # Add possible initialization below this line
 
     def execute(self):
 
@@ -161,11 +444,11 @@ class target_agent(simu.agent):
 
 # Initialize the simulator and define the obstacles in the environment.
 # The obstacles (walls) can only be horizontal or vertical.
-S = simu.simu(walls = [[13, 25, 30, 25], [10, 15, 25, 15], [11, 5, 11, 16], [24, 5, 24, 16]], GS = 31, W = 600, H = 600)
+S = simu.simu(walls = [[13, 25, 30, 25], [10, 15, 25, 15], [11, 5, 11, 16], [24, 5, 24, 16]], W = 600, H = 600)
 
 # Add the target agent to position (39, 39)
 # Do not change the name of the agent.
-S.add_agent(target_agent('target', (255, 0, 0)), (30, 30))
+S.add_agent(target_agent('target', (255, 0, 0)), (39, 39))
 
 # Add chaser agents to the bottom of the window starting from origo.
 # Do not change the name of the agents. The names are chaser0, chaser1, ...

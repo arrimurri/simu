@@ -10,6 +10,12 @@ import simu
 # stupid so it will get stuck if there are obstacles in its path.
 class my_agent(simu.agent):
 
+    def __init__(self, name, color):
+
+        super(my_agent, self).__init__(name, color)
+        # Add possible initialization below this line.
+
+
     def execute(self):
 
         mouse_pos = self.mouse()
@@ -17,10 +23,6 @@ class my_agent(simu.agent):
             self.params['target'] = mouse_pos
 
         direction = None
-
-        if self.name == 'agent5':
-            self.talk('agent0', "ASDF")
-            self.radar()
 
 
         if 'target' in self.params:

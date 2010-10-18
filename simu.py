@@ -23,7 +23,7 @@ WALL_WIDTH = 7
 TIME_LIMIT = 100
 
 ########################################################################
-class agent:
+class agent(object):
 
     ####################################################################
     def __init__(self, name, color):
@@ -34,7 +34,7 @@ class agent:
         self.color = color
 
 
-        self.__animate = False
+        self.__animate = True
 
         self.mouse_position   = None
         self.incoming_msgs    = [{}, {}]
@@ -93,67 +93,17 @@ class agent:
     def get_sensor_data(self):
 
         ret = [0 for i in xrange(8)]
-        x0 = self._position[0]
-        y0 = self._position[1]
-        GS = self.simu.GS
+        x0 = self._position[0] + 1
+        y0 = self._position[1] + 1
 
-        if x0 > 0 and x0 < GS - 1 and y0 > 0 and y0 < GS - 1:
-            ret[:3] = self.simu.map[x0 - 1:x0 + 2, y0 + 1]
-            ret[3]  = self.simu.map[x0 + 1, y0]
-            ret[4]  = self.simu.map[x0 + 1, y0 - 1]
-            ret[5]  = self.simu.map[x0, y0 - 1]
-            ret[6]  = self.simu.map[x0 - 1, y0 - 1]
-            ret[7]  = self.simu.map[x0 - 1, y0]
-
-        if x0 == 0:
-            ret[6:] = [-1, -1]
-            ret[0]  = -1
-        elif x0 == GS - 1:
-            ret[2:5] = [-1, -1, -1]
-
-        if y0 == 0:
-            ret[4:7] = [-1, -1, -1]
-        elif y0 == GS - 1:
-            ret[:3]  = [-1, -1, -1]
-
-
+        ret[:3] = self.simu.map[x0 - 1:x0 + 2, y0 + 1]
+        ret[3]  = self.simu.map[x0 + 1, y0]
+        ret[4]  = self.simu.map[x0 + 1, y0 - 1]
+        ret[5]  = self.simu.map[x0, y0 - 1]
+        ret[6]  = self.simu.map[x0 - 1, y0 - 1]
+        ret[7]  = self.simu.map[x0 - 1, y0]
 
         return numpy.array(ret)
-
-
-    ####################################################################
-    def check_line(self, p0, p1):
-
-        x0 = p0[0]
-        y0 = p0[1]
-        x1 = p1[0]
-        y1 = p1[1]
-
-
-        if x0 == x1:
-            if y0 < y1:
-                objects = self.simu.map[x0, y0:y1 + 1]
-                m = min(numpy.where(objects != 0)) + y0 - 1
-            else:
-                objects = self.simu.map[x0, y1:y0 + 1]
-                m = max(numpy.where(objects != 0))  + y1 + 1
-
-            if len(m) > 0:
-                return (p1[0], m[0])
-
-
-        else:
-            if x0 < x1:
-                objects = self.simu.map[x0:x1 + 1, y0]
-                m = min(numpy.where(objects != 0)) + x0 - 1
-            else:
-                objects = self.simu.map[x1:x0 + 1, y0]
-                m = max(numpy.where(objects != 0))  + x1 + 1
-
-            if len(m) > 0:
-                return (m[0], p1[1])
-
-        return p1
 
 
     ####################################################################
@@ -166,53 +116,40 @@ class agent:
 
 
     ####################################################################
-    def move(self, direction, distance = 1):
+    def move(self, direction):
 
         self.old_rect = self.rect
 
-        self.simu.map[self._position[0], self._position[1]] = 0
-
         if direction == 'up':
-            if self._position[1] + distance >= self.grid_size:
-                distance = self.grid_size - self._position[1] - 1
-            self._target_position = (self._position[0], self._position[1] + distance)
+            self._target_position = (self._position[0], self._position[1] + 1)
             self.phys_step = (0, -1)
 
-
         elif direction == 'down':
-            if self._position[1] - distance <= 0:
-                distance = self._position[1]
-            self._target_position = (self._position[0], self._position[1] - distance)
+            self._target_position = (self._position[0], self._position[1] - 1)
             self.phys_step = (0, 1)
 
-
         elif direction == 'right':
-            if self._position[0] + distance >= self.grid_size:
-                distance = self.grid_size - self._position[0] - 1
-            self._target_position = (self._position[0] + distance, self._position[1])
+            self._target_position = (self._position[0] + 1, self._position[1])
             self.phys_step = (1, 0)
 
-
         elif direction == 'left':
-            if self._position[0] - distance < 0:
-                distance = self._position[0]
-            self._target_position = (self._position[0]  - distance, self._position[1])
+            self._target_position = (self._position[0] - 1, self._position[1])
             self.phys_step = (-1, 0)
 
+        if self.simu.map[self._target_position[0] + 1, self._target_position[1] + 1] != 0:
+            self._target_position = self._position
+            return self._position
 
 
-        
-        self._target_position = self.check_line(self._position, self._target_position)
+
+        self.simu.map[self._position[0] + 1, self._position[1] + 1] = 0
+        self.simu.map[self._target_position[0] + 1, self._target_position[1] + 1] = self.id
 
         x = self._target_position[0] * self.unit_size + GAP / 2
         y = (self.grid_size - self._target_position[1] - 1) * self.unit_size + GAP / 2
 
-
-
         self.target_rect = pygame.Rect(x, y, self.unit_size - GAP, self.unit_size - GAP)
 
-
-        self.simu.map[self._target_position[0], self._target_position[1]] = self.id
 
         return self._target_position
 
@@ -282,13 +219,18 @@ class simu:
         self.agents      = []
         self.agent_names = {}
 
-        self.map     = numpy.array(numpy.zeros((self.GS, self.GS), numpy.int))
+        self.map       = numpy.array(numpy.zeros((self.GS + 2, self.GS + 2), numpy.int))
+        self.map[:, 0] = -1
+        self.map[:, self.GS + 1] = -1
+        self.map[0, :] = -1
+        self.map[self.GS + 1, :] = -1
+
 
         for wall in walls:
 
             for i in xrange(wall[0], wall[2] + 1):
                 for j in xrange(wall[1], wall[3] + 1):
-                    self.map[i, j] = -1
+                    self.map[i + 1, j + 1] = -1
 
 
 
@@ -336,7 +278,7 @@ class simu:
     ####################################################################
     def add_agent(self, agent, position):
 
-        if self.map[position] == -1:
+        if self.map[position[0] + 1, position[1] + 1] == -1:
             return False
 
         self.agents.append(agent)
