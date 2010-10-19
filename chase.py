@@ -121,9 +121,7 @@ class chaser_agent(simu.agent):
         target_pos = self.get_position('target')
         own_pos = self.get_position()
 
-        print 'Going in to astar'
         list_of_moves = self.astar(target_pos)
-        print 'Coming out of astar'
         if not list_of_moves:
             print 'Astar returned false'
             return
@@ -139,6 +137,7 @@ class chaser_agent(simu.agent):
         if next_pos == self.pos_right():
             direction = 'right'
 
+        print direction
         self.move(direction)
         return
 
@@ -177,6 +176,22 @@ class chaser_agent(simu.agent):
         # Do nothing
         pass
 
+    def sort_by_sum_weight(self, openlist, sum_weight):
+        if len(openlist) < 2:
+          return
+
+        copy_of_list = []
+        while copy_of_list != openlist:
+            copy_of_list = openlist[:]
+            i = 1
+            while i < len(openlist):
+                if sum_weight[openlist[i - 1]] > sum_weight[openlist[i]]:
+                    tmp = openlist[i]
+                    openlist[i] = openlist[i - 1]
+                    openlist[i - 1] = tmp
+                i += 1
+        return
+
     def astar(self, target):
         start_pos = self.get_position()
 
@@ -190,26 +205,37 @@ class chaser_agent(simu.agent):
         path_weight[start_pos] = 0
         heuristic_weight[start_pos] = self.euclid_distance(target)
         sum_weight[start_pos] = 0
+        print 'Target position'
+        print target
 
+        i = 0
         while len(openlist) > 0:
-            openlist.sort(key = lambda x: sum_weight[x], reverse = True)
-            print openlist
-            print len(openlist)
-            node = openlist.pop()
-            print len(openlist)
+            openlist = sorted(openlist, key = lambda x: sum_weight[x])
+            node = openlist.pop(0)
             print node
-            print sum_weight[node]
 
             if node == target:
+                print 'Target found'
+                print target
+                return self.backtrack_route(node, parent_node)
+
+            if i == 50:
+                print '50 achieved'
                 return self.backtrack_route(node, parent_node)
 
             closedlist.append(node)
 
             for neighbour in self.get_neighbours(node):
-                if neighbour in closedlist:
-                    print 'neighbour in closedlist'
+                if target == neighbour:
+                    print 'Target is one of neighbour'
+                    print neighbour
+                mirror_neighbour = (neighbour[1], neighbour[0])
+                if neighbour in closedlist or mirror_neighbour in closedlist:
                     continue
                 calc_score = path_weight[node] + 1
+
+                if mirror_neighbour in openlist:
+                    neighbour = mirror_neighbour
 
                 if neighbour not in openlist:
                     insert_stats = True
@@ -224,6 +250,7 @@ class chaser_agent(simu.agent):
                     path_weight[neighbour] = calc_score
                     heuristic_weight[neighbour] = self.euclid_distance(target, neighbour)
                     sum_weight[neighbour] = path_weight[neighbour] + heuristic_weight[neighbour]
+            i = i + 1
         return False
 
     def backtrack_route(self, node, parent_node):
@@ -231,7 +258,6 @@ class chaser_agent(simu.agent):
         while parent_node.has_key(node):
             retlist.append(node)
             node = parent_node[node]
-        retlist.append(node)
         return retlist
 
     def get_neighbours(self, node):
@@ -239,22 +265,23 @@ class chaser_agent(simu.agent):
         if node[0] < 0 or node[1] < 0:
             return neighbours
 
-        if not self.wall_or_occupied(self.pos_right(node)):
+        if not self.wall_or_another_chaser(self.pos_right(node)):
             neighbours.append(self.pos_right(node))
 
-        if not self.wall_or_occupied(self.pos_left(node)):
+        if not self.wall_or_another_chaser(self.pos_left(node)):
             neighbours.append(self.pos_left(node))
 
-        if not self.wall_or_occupied(self.pos_up(node)):
+        if not self.wall_or_another_chaser(self.pos_up(node)):
             neighbours.append(self.pos_up(node))
 
-        if not self.wall_or_occupied(self.pos_down(node)):
+        if not self.wall_or_another_chaser(self.pos_down(node)):
             neighbours.append(self.pos_down(node))
             
         return neighbours
         
-    def wall_or_occupied(self, node):
-        if self.occupied(node):
+    def wall_or_another_chaser(self, node):
+        chaser_positions = [self.get_position(x) for x in self.get_agent_names() if x != 'target']
+        if node in chaser_positions:
             return True
         if node in self.wall_positions:
             return True
