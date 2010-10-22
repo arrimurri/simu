@@ -127,7 +127,15 @@ class chaser_agent(simu.agent):
         if target_pos in self.get_neighbours(own_pos):
             return
 
-        list_of_moves = self.astar(target_pos)
+        # If the distance is long, then make it so that the search doubles the heuristic
+        # value of each node. This makes astar function more lika a depth first search. This
+        # change makes the algorithm a lot faster with greater distances (although it is not optimal,
+        # but good enough for long distances.
+        if self.euclid_distance > 7:
+            list_of_moves = self.astar(target_pos, double_heuristic = True)
+        else:
+            list_of_moves = self.astar(target_pos)
+
         if not list_of_moves:
             print 'Astar returned false'
             return
@@ -144,33 +152,6 @@ class chaser_agent(simu.agent):
             direction = 'right'
 
         self.move(direction)
-        #return
-
-        #up_distance_to_target = self.euclid_distance(target_pos, self.pos_up())
-        #down_distance_to_target = self.euclid_distance(target_pos, self.pos_down())
-        #left_distance_to_target = self.euclid_distance(target_pos, self.pos_left())
-        #right_distance_to_target = self.euclid_distance(target_pos, self.pos_right())
-#
-        #list_with_direction = [(up_distance_to_target, 'up'), 
-            #(down_distance_to_target, 'down'), 
-            #(left_distance_to_target, 'left'), 
-            #(right_distance_to_target, 'right')]
-#
-        #copy_of_list = []
-        #while copy_of_list != list_with_direction:
-            #copy_of_list = list_with_direction[:]
-            #i = 1
-            #while i < len(list_with_direction):
-                #if list_with_direction[i - 1][0] > list_with_direction[i][0]:
-                    #tmp = list_with_direction[i]
-                    #list_with_direction[i] = list_with_direction[i - 1]
-                    #list_with_direction[i - 1] = tmp
-                #i += 1
-            #
-        #for direction in list_with_direction:
-            #if not self.occupied(direction):
-                #self.move(direction[1])
-                #break
         
 
     # All extra methods should be inside the class.
@@ -193,23 +174,7 @@ class chaser_agent(simu.agent):
                 return False
         return True
 
-    def sort_by_sum_weight(self, openlist, sum_weight):
-        if len(openlist) < 2:
-          return
-
-        copy_of_list = []
-        while copy_of_list != openlist:
-            copy_of_list = openlist[:]
-            i = 1
-            while i < len(openlist):
-                if sum_weight[openlist[i - 1]] > sum_weight[openlist[i]]:
-                    tmp = openlist[i]
-                    openlist[i] = openlist[i - 1]
-                    openlist[i - 1] = tmp
-                i += 1
-        return
-
-    def astar(self, target):
+    def astar(self, target, double_heuristic = False):
         start_pos = self.get_position()
 
         openlist = [start_pos]
@@ -222,44 +187,21 @@ class chaser_agent(simu.agent):
         path_weight[start_pos] = 0
         heuristic_weight[start_pos] = self.euclid_distance(target)
         sum_weight[start_pos] = 0
-        #print 'Target position'
-        #print target
 
-        #i = 0
         while len(openlist) > 0:
-            #openlist = sorted(openlist, key = lambda x: sum_weight[x])
             openlist.sort(key = lambda x: sum_weight[x], reverse = True)
             node = openlist.pop()
-            #print node
-            #print 'This is the openlist'
-            #print openlist
 
             if node == target:
-                #print 'Target found'
-                #print target
                 return self.backtrack_route(node, parent_node)
 
-            #if i == 100:
-                #print '50 achieved'
-                #return self.backtrack_route(node, parent_node)
 
             closedmap[node] = True
-            #print 'This is the closedmap'
-            #print closedmap
 
             for neighbour in self.get_neighbours(node):
-                #if target == neighbour:
-                    #print 'Target is one of neighbour'
-                    #print neighbour
-                #mirror_neighbour = (neighbour[1], neighbour[0])
-                #if closedmap.has_key(neighbour) or closedmap.has_key(mirror_neighbour):
                 if closedmap.has_key(neighbour):
-                    #print str(neighbour) + ' is in closedmap'
                     continue
                 calc_score = path_weight[node] + 1
-
-                #if mirror_neighbour in openlist:
-                    #neighbour = mirror_neighbour
 
                 if neighbour not in openlist:
                     insert_stats = True
@@ -273,8 +215,9 @@ class chaser_agent(simu.agent):
                     parent_node[neighbour] = node
                     path_weight[neighbour] = calc_score
                     heuristic_weight[neighbour] = self.euclid_distance(target, neighbour)
+                    if double_heuristic:
+                        heuristic_weight[neighbour] *= 2
                     sum_weight[neighbour] = path_weight[neighbour] + heuristic_weight[neighbour]
-            #i = i + 1
         return False
 
     def backtrack_route(self, node, parent_node):
@@ -340,7 +283,7 @@ class chaser_agent(simu.agent):
         pos = self.get_position()
 
         # Return -1 if index is not in range 0 to 7
-        if index < 0 and index > 7:
+        if index < 0 and index > 10:
             return -1
 
         if index == 0:
@@ -359,80 +302,6 @@ class chaser_agent(simu.agent):
             return (pos[0] - 1, pos[1] - 1)
         else:
             return (pos[0] - 1, pos[1])
-
-    def occupied(self, move_pos):
-        sensor_value = self.get_sensor_value_by_direction(move_pos[1])
-
-        if(sensor_value != 0):
-            return True
-        return False
-            
-    def go_around(self, chosen):
-        target_pos = self.get_position('target')
-        own_pos = self.get_position()
-        sd = self.get_sensor_data()
-        self.params['move'] = chosen[1]
-
-        if sd[1] == -1 and own_pos[1] < target_pos[1]:
-            if sd[3] == -1:
-                self.params['move'] = 'left'
-            elif sd[7] == -1:
-                self.params['move'] = 'right'
-            elif self.params.has_key('move'):
-                pass
-            else:
-                self.params['move'] = random.choice(['left', 'right'])
-
-        if sd[5] == -1 and own_pos[1] > target_pos[1]:
-            if sd[3] == -1:
-                self.params['move'] = 'left'
-            elif sd[7] == -1:
-                self.params['move'] = 'right'
-            elif self.params.has_key('move'):
-                pass
-            else:
-                self.params['move'] = random.choice(['left', 'right'])
-                
-        if sd[3] == -1 and own_pos[0] < target_pos[0]:
-            if sd[1] == -1:
-                self.params['move'] = 'down'
-            elif sd[5] == -1:
-                self.params['move'] = 'up'
-            elif self.params.has_key('move'):
-                pass
-            else:
-                self.params['move'] = random.choice(['up', 'down'])
-
-        if sd[7] == -1 and own_pos[0] > target_pos[0]:
-            if sd[1] == -1:
-                self.params['move'] = 'down'
-            elif sd[5] == -1:
-                self.params['move'] = 'up'
-            elif self.params.has_key('move'):
-                pass
-            else:
-                self.params['move'] = random.choice(['up', 'down'])
-
-        self.move(self.params['move'])
-
-    def get_sensor_value_by_direction(self, direction):
-        sd = self.get_sensor_data()
-        if direction == 'up':
-            return sd[1]
-        if direction == 'down':
-            return sd[5]
-        if direction == 'left':
-            return sd[7]
-        return sd[3]
-        
-    def get_pos_by_direction(self, direction):
-        if direction == 'up':
-            return self.pos_up()
-        if direction == 'down':
-            return self.pos_down()
-        if direction == 'left':
-            return self.pos_left()
-        return self.pos_right()
 
     def pos_left(self, own_pos = None):
         if not own_pos:
@@ -489,27 +358,27 @@ class target_agent(simu.agent):
 
 
         # The agent will move randomly
-        #self.move(random.choice(['up', 'down', 'left', 'right']))
-        sd = self.get_sensor_data()
+        self.move(random.choice(['up', 'down', 'left', 'right']))
+        #sd = self.get_sensor_data()
 
-        if sd[1] == -1 and sd[3] != -1 or sd[7] == sd[1] == -1:
-            self.move('right')
-        elif sd[3] == -1 and sd[5] != -1 or sd[1] == sd[3] == -1:
-            self.move('down')
-        elif sd[5] == -1 and sd[7] != -1 or sd[3] == sd[5] == -1:
-            self.move('left')
-        elif sd[7] == -1 and sd[1] != -1 or sd[5] == sd[7] == -1:
-            self.move('up')
-        elif sd[0] == -1:
-            self.move('up')
-        elif sd[6] == -1:
-            self.move('left')
-        elif sd[4] == -1:
-            self.move('down')
-        elif sd[2] == -1:
-            self.move('right')
-        else:
-            self.move(random.choice(('up', 'right', 'down', 'left')))
+        #if sd[1] == -1 and sd[3] != -1 or sd[7] == sd[1] == -1:
+            #self.move('right')
+        #elif sd[3] == -1 and sd[5] != -1 or sd[1] == sd[3] == -1:
+            #self.move('down')
+        #elif sd[5] == -1 and sd[7] != -1 or sd[3] == sd[5] == -1:
+            #self.move('left')
+        #elif sd[7] == -1 and sd[1] != -1 or sd[5] == sd[7] == -1:
+            #self.move('up')
+        #elif sd[0] == -1:
+            #self.move('up')
+        #elif sd[6] == -1:
+            #self.move('left')
+        #elif sd[4] == -1:
+            #self.move('down')
+        #elif sd[2] == -1:
+            #self.move('right')
+        #else:
+            #self.move(random.choice(('up', 'right', 'down', 'left')))
 
 
 
@@ -519,7 +388,7 @@ S = simu.simu(walls = [[13, 25, 30, 25], [10, 15, 25, 15], [11, 5, 11, 16], [24,
 
 # Add the target agent to position (39, 39)
 # Do not change the name of the agent.
-S.add_agent(target_agent('target', (255, 0, 0)), (25, 17))
+S.add_agent(target_agent('target', (255, 0, 0)), (39, 13))
 
 # Add chaser agents to the bottom of the window starting from origo.
 # Do not change the name of the agents. The names are chaser0, chaser1, ...
