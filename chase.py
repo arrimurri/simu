@@ -131,7 +131,7 @@ class chaser_agent(simu.agent):
         # value of each node. This makes astar function more lika a depth first search. This
         # change makes the algorithm a lot faster with greater distances (although it is not optimal,
         # but good enough for long distances.
-        if self.euclid_distance > 7:
+        if self.euclid_distance > 20:
             list_of_moves = self.astar(target_pos, double_heuristic = True)
         else:
             list_of_moves = self.astar(target_pos)
