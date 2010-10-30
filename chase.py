@@ -344,7 +344,117 @@ class target_agent(simu.agent):
 
         super(target_agent, self).__init__(name, color)
         # Add possible initialization below this line
+        self.wall_positions = {}
 
+    def update_wall_positions(self):
+        sd = self.get_sensor_data()
+        wall_pos = []
+        for i, s in enumerate(sd):
+            if s == -1:
+                coords = self.get_coords_of_sensor(i)
+                wall_pos.append(coords)
+                self.wall_positions[coords] = True
+
+    def get_coords_of_sensor(self, index):
+        pos = self.get_position()
+
+        # Return -1 if index is not in range 0 to 7
+        if index < 0 and index > 10:
+            return -1
+
+        if index == 0:
+            return (pos[0] - 1, pos[1] + 1)
+        elif index == 1:
+            return (pos[0], pos[1] + 1)
+        elif index == 2:
+            return (pos[0] + 1, pos[1] + 1)
+        elif index == 3:
+            return (pos[0] + 1, pos[1])
+        elif index == 4:
+            return (pos[0] + 1, pos[1] - 1)
+        elif index == 5:
+            return (pos[0], pos[1] - 1)
+        elif index == 6:
+            return (pos[0] - 1, pos[1] - 1)
+        else:
+            return (pos[0] - 1, pos[1])
+
+    def get_chaser_positions(self):
+        agent_names = self.get_agent_names()
+        return [self.get_position(x) for x in agent_names if x != 'target']
+
+    def sort_neighbours(self, neighbours):
+        n_plus_points = []
+        chaser_pos = self.get_chaser_positions()
+        for n in neighbours:
+            tmp_dict = {}
+            tmp_dict[n] = 0
+            if not self.wall_positions.has_key(n) and n not in chaser_pos:
+                for n2 in self.get_neighbour_positions(n):
+                    if self.wall_positions.has_key(n2):
+                        tmp_dict[n] = tmp_dict[n] + 1
+                    if n2 in chaser_pos:
+                        tmp_dict[n] = tmp_dict[n] + 1
+            else:
+                tmp_dict[n] = 5
+            n_plus_points.append((n, tmp_dict[n]))
+        n_plus_points.sort(key = lambda x: x[1])
+        return n_plus_points
+
+    def get_neighbour_positions(self, pos = None):
+        if not pos:
+            pos = self.get_position()
+        neighbours = []
+        neighbours.append(self.pos_left(pos))
+        neighbours.append(self.pos_right(pos))
+        neighbours.append(self.pos_up(pos))
+        neighbours.append(self.pos_down(pos))
+        return neighbours
+
+    def pos_left(self, own_pos = None):
+        if not own_pos:
+            own_pos = self.get_position()
+        return (own_pos[0] - 1, own_pos[1])
+
+    def pos_right(self, own_pos = None):
+        if not own_pos:
+            own_pos = self.get_position()
+        return (own_pos[0] + 1, own_pos[1])
+
+    def pos_up(self, own_pos = None):
+        if not own_pos:
+            own_pos = self.get_position()
+        return (own_pos[0], own_pos[1] + 1)
+
+    def pos_down(self, own_pos = None):
+        if not own_pos:
+            own_pos = self.get_position()
+        return (own_pos[0], own_pos[1] - 1)
+
+    def euclid_distance_to_chasers(self, pos):
+        chaser_positions = self.get_chaser_positions()
+        return sum([self.euclid_distance(x, pos) for x in chaser_positions])
+
+    def get_shortest_distance(self, values):
+        ret_val = values[0]
+        ret_distance = self.euclid_distance_to_chasers(ret_val[0])
+        for i, v in enumerate(values):
+            if i == 0:
+                continue
+            if self.euclid_distance_to_chasers(v[0]) > ret_distance:
+                ret_val = v
+                ret_distance = self.euclid_distance_to_chasers(v[0])
+        return ret_val
+
+    def euclid_distance(self, target_pos, chaser_pos = None):
+        if chaser_pos == None:
+            chaser_pos = self.get_position()
+
+        distance = math.sqrt((target_pos[0] - chaser_pos[0])**2 + 
+            (target_pos[1] - chaser_pos[1])**2)
+
+        return distance
+            
     def execute(self):
 
         # Do not remove the line below or the test below that.
@@ -356,9 +466,35 @@ class target_agent(simu.agent):
         # Do not remove the lines above.
         # Put all your code for the execute method below this line.
 
+        self.update_wall_positions()
 
-        # The agent will move randomly
-        self.move(random.choice(['up', 'down', 'left', 'right']))
+        num_of_chasers = len(self.get_agent_names()) - 1
+        if self.euclid_distance_to_chasers(self.get_position()) > 5 * num_of_chasers:
+            self.move(random.choice(['up', 'down', 'left', 'right']))
+            return
+
+        sorted_list = self.sort_neighbours(self.get_neighbour_positions())
+        print sorted_list
+        best_value = sorted_list[0][1]
+
+        values_with_best_value = [x for x in sorted_list if x[1] == best_value]
+        print values_with_best_value
+
+        next_pos = self.get_shortest_distance(values_with_best_value)
+
+        direction = ''
+        if next_pos[0] == self.pos_up():
+            direction = 'up'
+        if next_pos[0] == self.pos_down():
+            direction = 'down'
+        if next_pos[0] == self.pos_left():
+            direction = 'left'
+        if next_pos[0] == self.pos_right():
+            direction = 'right'
+
+        print direction
+        self.move(direction)
+        # self.move(random.choice(['up', 'down', 'left', 'right']))
         #sd = self.get_sensor_data()
 
         #if sd[1] == -1 and sd[3] != -1 or sd[7] == sd[1] == -1:
@@ -388,7 +524,7 @@ S = simu.simu(walls = [[13, 25, 30, 25], [10, 15, 25, 15], [11, 5, 11, 16], [24,
 
 # Add the target agent to position (39, 39)
 # Do not change the name of the agent.
-S.add_agent(target_agent('target', (255, 0, 0)), (39, 13))
+S.add_agent(target_agent('target', (255, 0, 0)), (39, 39))
 
 # Add chaser agents to the bottom of the window starting from origo.
 # Do not change the name of the agents. The names are chaser0, chaser1, ...
